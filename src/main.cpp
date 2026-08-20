@@ -498,7 +498,7 @@ int main(int argc, char* argv[])
     try
     {
         Botcraft::Logger::GetInstance().SetLogLevel(Botcraft::LogLevel::Info);
-        Botcraft::Logger::GetInstance().SetFilename("");
+        Botcraft::Logger::GetInstance().SetFilename("logs/bot.log");
         Botcraft::Logger::GetInstance().RegisterThread("main");
 
         std::string address = "127.0.0.1:25565";
@@ -516,17 +516,36 @@ int main(int argc, char* argv[])
 
         std::thread http_thread(RunHttpServer, web_port);
 
-        WebBotClient client;
-        client.SetAutoRespawn(true);
-        g_client = &client;
+        bool want_running = true;
+        while (want_running)
+        {
+            WebBotClient client;
+            client.SetAutoRespawn(true);
+            g_client = &client;
 
-        LOG_INFO("Connecting to " << address << " as " << login);
-        client.Connect(address, login);
-        LOG_INFO("Connected! Bot name: " << client.GetPlayerName());
+            try
+            {
+                LOG_INFO("Connecting to " << address << " as " << login);
+                client.Connect(address, login);
+                LOG_INFO("Connected! Bot name: " << client.GetPlayerName());
 
-        client.RunBehaviourUntilClosed();
+                client.RunBehaviourUntilClosed();
 
-        client.Disconnect();
+                client.Disconnect();
+            }
+            catch (std::exception& e)
+            {
+                LOG_ERROR("Connection error: " << e.what());
+                try { client.Disconnect(); } catch (...) {}
+            }
+
+            g_client = nullptr;
+            LOG_INFO("Disconnected. Reconnecting in 5s...");
+
+            for (int i = 0; i < 50 && want_running; ++i)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
         g_running = false;
         http_thread.join();
 
