@@ -1,7 +1,7 @@
 From df2a4031cf1fa1e5f66ce9942adc120984a3533f Mon Sep 17 00:00:00 2001
 From: Zmee4ka376 <zmee4ka376@users.noreply.github.com>
 Date: Fri, 21 Aug 2026 01:56:45 +0300
-Subject: [PATCH 1/2] Fix LocalPlayer shared_ptr data races (crash 0xc0000005
+Subject: [PATCH 1/3] Fix LocalPlayer shared_ptr data races (crash 0xc0000005
  during login) + server compat changes
 
 ---
@@ -921,7 +921,7 @@ index 8f6e82a..fcfb5b6 100644
 From 28b7d39da7024120d1c98e7e6c907d9c32d555fe Mon Sep 17 00:00:00 2001
 From: Zmee4ka376 <zmee4ka376@users.noreply.github.com>
 Date: Fri, 21 Aug 2026 02:14:43 +0300
-Subject: [PATCH 2/2] Full state reset on proxy server switch (duplicate Login
+Subject: [PATCH 2/3] Full state reset on proxy server switch (duplicate Login
  in Play state)
 
 ---
@@ -1033,6 +1033,204 @@ index 3fec0c2..39fcf57 100644
          std::scoped_lock<std::shared_mutex> lock(world_mutex);
  #if PROTOCOL_VERSION < 719 /* < 1.16 */
          SetCurrentDimensionImpl(static_cast<Dimension>(packet.GetDimension()));
+-- 
+2.55.0.windows.3
+
+
+From 72b0f0c90d3e80fb81ff15187ec9486315df308e Mon Sep 17 00:00:00 2001
+From: Zmee4ka376 <zmee4ka376@users.noreply.github.com>
+Date: Fri, 21 Aug 2026 02:40:16 +0300
+Subject: [PATCH 3/3] Port grief-server fixes: ContainerAck accepted=true echo,
+ PhysicsManager Respawn reset, Play-state send guard
+
+---
+ .../botcraft/Game/Physics/PhysicsManager.hpp  |  1 +
+ botcraft/src/Game/ConnectionClient.cpp        | 10 ++++--
+ botcraft/src/Game/Physics/PhysicsManager.cpp  | 28 +++++++++++++++
+ botcraft/src/Network/NetworkManager.cpp       | 11 ++++++
+ .../include/protocolCraft/BasePacket.hpp      |  1 +
+ .../include/protocolCraft/Packet.hpp          |  3 ++
+ protocolCraft/src/BasePacket.cpp              | 35 +++++++++++++++++++
+ 7 files changed, 86 insertions(+), 3 deletions(-)
+
+diff --git a/botcraft/include/botcraft/Game/Physics/PhysicsManager.hpp b/botcraft/include/botcraft/Game/Physics/PhysicsManager.hpp
+index 4fa7c68..a595390 100644
+--- a/botcraft/include/botcraft/Game/Physics/PhysicsManager.hpp
++++ b/botcraft/include/botcraft/Game/Physics/PhysicsManager.hpp
+@@ -54,6 +54,7 @@ namespace Botcraft
+ 
+     protected:
+         virtual void Handle(ProtocolCraft::ClientboundLoginPacket& packet) override;
++        virtual void Handle(ProtocolCraft::ClientboundRespawnPacket& packet) override;
+         virtual void Handle(ProtocolCraft::ClientboundPlayerPositionPacket& packet) override;
+ #if PROTOCOL_VERSION > 764 /* > 1.20.2 */
+         virtual void Handle(ProtocolCraft::ClientboundTickingStatePacket& packet) override;
+diff --git a/botcraft/src/Game/ConnectionClient.cpp b/botcraft/src/Game/ConnectionClient.cpp
+index 7748dc1..9a62e96 100644
+--- a/botcraft/src/Game/ConnectionClient.cpp
++++ b/botcraft/src/Game/ConnectionClient.cpp
+@@ -105,14 +105,18 @@ namespace Botcraft
+ #if PROTOCOL_VERSION < 755 /* < 1.17 */
+     void ConnectionClient::Handle(ClientboundContainerAckPacket& packet)
+     {
+-        // If the transaction was not accepted, we must apologize
+-        // else it's processed in InventoryManager
++        // If the transaction was not accepted, we must confirm it.
++        // The vanilla client answers rejected transactions with an ack echo
++        // carrying accepted=true (meaning "I acknowledge the rejection"),
++        // NOT accepted=false. Some servers (e.g. anti-cheats on 1.8 backends
++        // behind ViaVersion) constantly send transaction pings with
++        // accepted=false and kick clients that don't confirm them properly.
+         if (!packet.GetAccepted())
+         {
+             std::shared_ptr<ServerboundContainerAckPacket> apologize_packet = std::make_shared<ServerboundContainerAckPacket>();
+             apologize_packet->SetContainerId(packet.GetContainerId());
+             apologize_packet->SetUid(packet.GetUid());
+-            apologize_packet->SetAccepted(packet.GetAccepted());
++            apologize_packet->SetAccepted(true);
+ 
+             network_manager->Send(apologize_packet);
+         }
+diff --git a/botcraft/src/Game/Physics/PhysicsManager.cpp b/botcraft/src/Game/Physics/PhysicsManager.cpp
+index 7c948a5..7b32578 100644
+--- a/botcraft/src/Game/Physics/PhysicsManager.cpp
++++ b/botcraft/src/Game/Physics/PhysicsManager.cpp
+@@ -121,6 +121,34 @@ namespace Botcraft
+         }
+     }
+ 
++    void PhysicsManager::Handle(ClientboundRespawnPacket& packet)
++    {
++        // On a proxy network a Respawn is often just a server transfer
++        // (hub <-> game server), not an actual death: the world changed,
++        // so drop any pending teleport acknowledgement from the previous
++        // server and make sure we hold the current player
++        const std::shared_ptr<LocalPlayer> new_player = entity_manager->GetLocalPlayer();
++        std::shared_ptr<LocalPlayer> old_player;
++        {
++            std::scoped_lock<std::shared_mutex> lock(player_mutex);
++            old_player = player;
++            player = new_player;
++        }
++        if (old_player != nullptr)
++        {
++            // If we already have a player, we need to make sure we're not in the middle
++            // of a physics update while resetting the teleportation state
++            std::scoped_lock<std::shared_mutex> lock(old_player->entity_mutex);
++            teleport_id = std::nullopt;
++            ticks_since_last_position_sent = 0;
++        }
++        else
++        {
++            teleport_id = std::nullopt;
++            ticks_since_last_position_sent = 0;
++        }
++    }
++
+     void PhysicsManager::Handle(ClientboundPlayerPositionPacket& packet)
+     {
+         std::shared_ptr<LocalPlayer> player;
+diff --git a/botcraft/src/Network/NetworkManager.cpp b/botcraft/src/Network/NetworkManager.cpp
+index 1d2ecc9..b9fb620 100644
+--- a/botcraft/src/Network/NetworkManager.cpp
++++ b/botcraft/src/Network/NetworkManager.cpp
+@@ -202,6 +202,17 @@ namespace Botcraft
+             return;
+         }
+ 
++        // Never send Play packets while not in the Play state. This can happen
++        // during a server transfer (Start Configuration) when other threads
++        // (physics, user input, ...) still try to send Play packets. The server
++        // would misinterpret them (wrong packet id for the current state) and
++        // kick us with an "internal error".
++        if (packet->GetConnectionState() == ConnectionState::Play && current_state != ConnectionState::Play)
++        {
++            LOG_WARNING("[SEND] Trying to send Play packet \"" << packet->GetName() << "\" while in " << StateToString(current_state) << " state, dropping it.");
++            return;
++        }
++
+         LOG_INFO("[SEND] " << packet->GetName() << " (0x" << std::hex << packet->GetId() << std::dec << ") [" << StateToString(current_state) << "]");
+         std::lock_guard<std::mutex> lock(mutex_send);
+         if (state.load() != ConnectionState::None && com)
+diff --git a/protocolCraft/include/protocolCraft/BasePacket.hpp b/protocolCraft/include/protocolCraft/BasePacket.hpp
+index e48cb75..03af602 100644
+--- a/protocolCraft/include/protocolCraft/BasePacket.hpp
++++ b/protocolCraft/include/protocolCraft/BasePacket.hpp
+@@ -13,6 +13,7 @@ namespace ProtocolCraft
+         virtual ~BasePacket() override {};
+ 
+         virtual int GetId() const override;
++        virtual ConnectionState GetConnectionState() const override;
+         virtual std::string_view GetName() const override { return TDerived::packet_name; }
+ #ifdef PROTOCOLCRAFT_DETAILED_PARSING
+         virtual std::shared_ptr<Packet> CopyTypeOnly() const override { return std::make_shared<TDerived>(); }
+diff --git a/protocolCraft/include/protocolCraft/Packet.hpp b/protocolCraft/include/protocolCraft/Packet.hpp
+index 5fad3b3..c7bd3d2 100644
+--- a/protocolCraft/include/protocolCraft/Packet.hpp
++++ b/protocolCraft/include/protocolCraft/Packet.hpp
+@@ -4,6 +4,7 @@
+ #include <memory>
+ 
+ #include "protocolCraft/NetworkType.hpp"
++#include "protocolCraft/enums.hpp"
+ 
+ namespace ProtocolCraft
+ {
+@@ -30,6 +31,8 @@ namespace ProtocolCraft
+ 
+         virtual int GetId() const = 0;
+ 
++        virtual ConnectionState GetConnectionState() const = 0;
++
+         virtual std::string_view GetName() const = 0;
+ 
+ #ifdef PROTOCOLCRAFT_DETAILED_PARSING
+diff --git a/protocolCraft/src/BasePacket.cpp b/protocolCraft/src/BasePacket.cpp
+index ab2dc8a..c8095ac 100644
+--- a/protocolCraft/src/BasePacket.cpp
++++ b/protocolCraft/src/BasePacket.cpp
+@@ -54,6 +54,41 @@ namespace ProtocolCraft
+         }
+     }
+ 
++    template<typename TDerived>
++    ConnectionState BasePacket<TDerived>::GetConnectionState() const
++    {
++        if constexpr (Internal::tuple_contains_type<TDerived, AllClientboundPlayPackets> ||
++            Internal::tuple_contains_type<TDerived, AllServerboundPlayPackets>)
++        {
++            return ConnectionState::Play;
++        }
++        else if constexpr (Internal::tuple_contains_type<TDerived, AllClientboundStatusPackets> ||
++            Internal::tuple_contains_type<TDerived, AllServerboundStatusPackets>)
++        {
++            return ConnectionState::Status;
++        }
++        else if constexpr (Internal::tuple_contains_type<TDerived, AllClientboundLoginPackets> ||
++            Internal::tuple_contains_type<TDerived, AllServerboundLoginPackets>)
++        {
++            return ConnectionState::Login;
++        }
++        else if constexpr (Internal::tuple_contains_type<TDerived, AllServerboundHandshakingPackets>)
++        {
++            return ConnectionState::Handshake;
++        }
++#if PROTOCOL_VERSION > 763 /* > 1.20.1 */
++        else if constexpr (Internal::tuple_contains_type<TDerived, AllClientboundConfigurationPackets> ||
++            Internal::tuple_contains_type<TDerived, AllServerboundConfigurationPackets>)
++        {
++            return ConnectionState::Configuration;
++        }
++#endif
++        else
++        {
++            static_assert(Internal::dependant_false<TDerived>, "Trying to get the state of a packet which is not in protocol tuples");
++        }
++    }
++
+     template <typename TDerived>
+     void BasePacket<TDerived>::DispatchImpl(Handler* handler)
+     {
 -- 
 2.55.0.windows.3
 
