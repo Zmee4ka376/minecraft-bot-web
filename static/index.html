@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Botcraft Control Panel</title>
+<style>
+  body { font-family: Consolas, monospace; background: #1e1e1e; color: #d4d4d4; margin: 0; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 8px; color: #4ec9b0; }
+  h2 { font-size: 14px; margin: 12px 0 6px; color: #9cdcfe; }
+  #status { color: #9cdcfe; margin-bottom: 12px; }
+  .row { display: flex; gap: 8px; margin-bottom: 8px; }
+  input { flex: 1; background: #2d2d2d; color: #d4d4d4; border: 1px solid #3c3c3c; padding: 8px; border-radius: 4px; font-family: Consolas, monospace; }
+  select { flex: 1; background: #2d2d2d; color: #d4d4d4; border: 1px solid #3c3c3c; padding: 8px; border-radius: 4px; font-family: Consolas, monospace; }
+  button { background: #0e639c; color: white; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; font-family: Consolas, monospace; }
+  button:hover { background: #1177bb; }
+  button.danger { background: #a1260d; }
+  button.small { padding: 3px 7px; font-size: 11px; }
+  .grid { display: grid; gap: 3px; margin-bottom: 6px; }
+  .grid.hotbar { grid-template-columns: repeat(9, 1fr); }
+  .grid.main { grid-template-columns: repeat(9, 1fr); }
+  .grid.win { grid-template-columns: repeat(9, 1fr); }
+  .slot { position: relative; background: #252525; border: 1px solid #3a3a3a; border-radius: 4px; padding: 4px; min-height: 40px; cursor: pointer; }
+  .slot.sel { border: 2px solid #4ec9b0; }
+  .slot-name { font-size: 10px; color: #ce9178; word-break: break-word; }
+  .slot-count { font-size: 11px; color: #b5cea8; }
+  .slot .drop { position: absolute; top: 1px; right: 1px; background: #5a1d1d; padding: 0 4px; font-size: 10px; display: none; cursor: pointer; }
+  .slot:hover .drop { display: block; }
+  .hb { position: relative; background: #252525; border: 1px solid #3a3a3a; border-radius: 4px; padding: 4px; min-height: 40px; cursor: pointer; text-align: center; }
+  .hb.cur { border: 2px solid #d7ba7d; }
+  .hb .num { color: #569cd6; font-size: 10px; }
+  #log { background: #111; border: 1px solid #333; border-radius: 4px; height: 300px; overflow-y: auto; padding: 8px; font-size: 13px; }
+  #log div { white-space: pre-wrap; word-break: break-word; padding: 1px 0; }
+  .hint { color: #808080; font-size: 11px; margin: 4px 0 8px; }
+  input:focus { border-color: #4ec9b0; outline: none; }
+</style>
+</head>
+<body>
+  <h1>Botcraft Control Panel</h1>
+  <div id="status">status: ...</div>
+
+  <div class="row">
+    <input id="chat" placeholder="Сообщение в чат..." />
+    <button onclick="sendChat()">Отправить</button>
+  </div>
+  <div class="row">
+    <input id="command" placeholder="Команда (без /)..." />
+    <button onclick="sendCommand()">Команда</button>
+  </div>
+  <div class="row">
+    <input id="botcmd" placeholder="Команда боту: goto 100 64 -200 / dig x y z / interact x y z / stop..." />
+    <button onclick="sendBotCmd()">Боту</button>
+  </div>
+  <div id="cmdhint" class="hint">Команды боту: goto x y z · dig x y z · interact x y z · stop</div>
+
+  <h2>Инвентарь</h2>
+  <div id="handinfo" class="hint">В руке: —</div>
+  <div class="row">
+    <button onclick="useItem()">Использовать (ПКМ)</button>
+    <button onclick="refreshAll()">Обновить</button>
+  </div>
+  <div id="invlist" class="hint"></div>
+  <div class="hint">Клик по слоту — выбрать, клик по второму — переложить. ✕ при наведении — выбросить стак.</div>
+  <div class="grid main" id="invgrid"></div>
+
+  <h2>Хотбар (клик — выбрать слот)</h2>
+  <div class="grid hotbar" id="hotbar"></div>
+
+  <h2>Сундук (клик — взять, Shift+клик — быстро переложить)</h2>
+  <div id="containerinfo" class="hint">Сундук не открыт</div>
+  <div class="row">
+    <button class="small" onclick="closeContainer()">Закрыть сундук</button>
+  </div>
+  <div class="grid win" id="container"></div>
+
+  <h2>Лог</h2>
+  <div id="log"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
