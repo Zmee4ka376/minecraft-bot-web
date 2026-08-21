@@ -80,6 +80,7 @@ public:
     virtual void Handle(ProtocolCraft::ClientboundPlayerChatPacket& msg) override;
     virtual void Handle(ProtocolCraft::ClientboundSystemChatPacket& msg) override;
 #endif
+    virtual void Handle(ProtocolCraft::ClientboundRespawnPacket& msg) override;
 
 private:
     std::mutex chatMutex;
