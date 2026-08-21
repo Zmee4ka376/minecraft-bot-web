@@ -367,8 +367,8 @@ index 3431f85..5ca5748 100644
          // Move with elytra
          else if (player->GetDataSharedFlagsIdImpl(EntitySharedFlagsId::FallFlying))
          {
--            // sqrt(front_vector.x² + front_vector.z²) to follow vanilla code
--            // it's equal to cos(pitch) (as -90°<=pitch<=90°, cos(pitch) >= 0.0)
+-            // sqrt(front_vector.xï¿½ + front_vector.zï¿½) to follow vanilla code
+-            // it's equal to cos(pitch) (as -90ï¿½<=pitch<=90ï¿½, cos(pitch) >= 0.0)
 +            // sqrt(front_vector.xï¿½ + front_vector.zï¿½) to follow vanilla code
 +            // it's equal to cos(pitch) (as -90ï¿½<=pitch<=90ï¿½, cos(pitch) >= 0.0)
              const double cos_pitch_from_length = std::sqrt(player->front_vector.x * player->front_vector.x + player->front_vector.z * player->front_vector.z);
@@ -1040,7 +1040,7 @@ index 3fec0c2..39fcf57 100644
 From 72b0f0c90d3e80fb81ff15187ec9486315df308e Mon Sep 17 00:00:00 2001
 From: Zmee4ka376 <zmee4ka376@users.noreply.github.com>
 Date: Fri, 21 Aug 2026 02:40:16 +0300
-Subject: [PATCH 3/3] Port grief-server fixes: ContainerAck accepted=true echo,
+Subject: [PATCH 3/3] Port grief-server fixes: ContainerAck vanilla echo (accepted=false),
  PhysicsManager Respawn reset, Play-state send guard
 
 ---
@@ -1075,22 +1075,28 @@ index 7748dc1..9a62e96 100644
      {
 -        // If the transaction was not accepted, we must apologize
 -        // else it's processed in InventoryManager
-+        // If the transaction was not accepted, we must confirm it.
-+        // The vanilla client answers rejected transactions with an ack echo
-+        // carrying accepted=true (meaning "I acknowledge the rejection"),
-+        // NOT accepted=false. Some servers (e.g. anti-cheats on 1.8 backends
-+        // behind ViaVersion) constantly send transaction pings with
-+        // accepted=false and kick clients that don't confirm them properly.
-         if (!packet.GetAccepted())
-         {
-             std::shared_ptr<ServerboundContainerAckPacket> apologize_packet = std::make_shared<ServerboundContainerAckPacket>();
-             apologize_packet->SetContainerId(packet.GetContainerId());
-             apologize_packet->SetUid(packet.GetUid());
++        // The container ack handling (including the "acknowledge rejection"
++        // echo for transactions we actually made) lives in the
++        // InventoryManager, which knows which transaction ids are ours.
++        // Echoing here blindly would also answer the anti-cheat's probe
++        // pings (unknown/negative ids), which is what gets the bot flagged
++        // as a fake client. So this handler does nothing.
+-        if (!packet.GetAccepted())
+-        {
+-            std::shared_ptr<ServerboundContainerAckPacket> apologize_packet = std::make_shared<ServerboundContainerAckPacket>();
+-            apologize_packet->SetContainerId(packet.GetContainerId());
+-            apologize_packet->SetUid(packet.GetUid());
 -            apologize_packet->SetAccepted(packet.GetAccepted());
-+            apologize_packet->SetAccepted(true);
- 
-             network_manager->Send(apologize_packet);
-         }
+-
+-            network_manager->Send(apologize_packet);
+-        }
+     }
+ #endif
++
++    // InventoryManager.cpp: Handle(ClientboundContainerAckPacket) returns
++    // silently for unknown containers/uids (anti-cheat probes are ignored,
++    // not answered) and echoes only our own rejected transactions back with
++    // accepted=true, like the working 123321 fork.
 diff --git a/botcraft/src/Game/Physics/PhysicsManager.cpp b/botcraft/src/Game/Physics/PhysicsManager.cpp
 index 7c948a5..7b32578 100644
 --- a/botcraft/src/Game/Physics/PhysicsManager.cpp
