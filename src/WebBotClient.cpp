@@ -17,6 +17,7 @@
 #include "botcraft/AI/Tasks/AllTasks.hpp"
 
 #include "WebBotClient.hpp"
+#include "MineModule.hpp"
 
 using namespace Botcraft;
 using namespace ProtocolCraft;
@@ -233,6 +234,15 @@ void WebBotClient::Handle(ClientboundSystemChatPacket& msg)
 }
 #endif
 
+void WebBotClient::Handle(ClientboundRespawnPacket& msg)
+{
+    ManagersClient::Handle(msg);
+    // On a proxy network a Respawn is often just a server transfer
+    // (hub <-> game server): let the mining module start its anti-cheat
+    // grace period. Remove together with the MineModule.
+    MineModule::NotifyTransfer();
+}
+
 void WebBotClient::ProcessChatMsg(const std::vector<std::string>& splitted_msg)
 {
     if (splitted_msg.size() < 2)
@@ -247,6 +257,13 @@ void WebBotClient::ProcessChatMsg(const std::vector<std::string>& splitted_msg)
     }
 
     if (sender != network_manager->GetMyName())
+    {
+        return;
+    }
+
+    // Optional mining module (mine/sortdebris/seallava/place_block/check_perimeter/use).
+    // Remove this call (and the CMakeLists entries) to build without the module.
+    if (MineModule::ProcessCommand(*this, splitted_msg))
     {
         return;
     }
