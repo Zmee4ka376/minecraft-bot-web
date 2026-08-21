@@ -26,9 +26,7 @@ add_subdirectory(Botcraft)
 add_executable(WebBot
     ${CMAKE_SOURCE_DIR}/src/main.cpp
     ${CMAKE_SOURCE_DIR}/src/WebBotClient.cpp
-    ${CMAKE_SOURCE_DIR}/src/MineModule.cpp
     ${CMAKE_SOURCE_DIR}/include/WebBotClient.hpp
-    ${CMAKE_SOURCE_DIR}/include/MineModule.hpp
 )
 target_include_directories(WebBot PUBLIC
     ${CMAKE_SOURCE_DIR}/include
