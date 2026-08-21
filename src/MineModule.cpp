@@ -341,7 +341,7 @@ namespace
             {
                 c.GetBlackboard().Set<bool>("Mine.no_filler_warned", true);
                 LOG_INFO("[LAVA] can't seal lava at " << lava_cells.front() << ": no filler blocks in inventory");
-                c.LogMessage("[LAVA] net blokov dlya zakladki! Day netherrack/bulyzhnik/blackstone");
+                c.LogMessage("[LAVA] нет блоков для закладки! Дай незеррак/булыжник/чернокамень");
             }
             return 0;
         }
@@ -535,7 +535,7 @@ namespace
         if (in_own_cells)
         {
             LOG_INFO("[LAVA] lava IN the bot's cells at " << feet << ", swimming out then sealing");
-            c.LogMessage("[MINE] lava v kletke! vyplыvayu i zakroyu!");
+            c.LogMessage("[MINE] лава в клетке! Выплываю и закрою!");
             // Pathfinding refuses to move through lava (hazardous), so use
             // raw inputs to swim out instead of GoTo (which just stands there)
             FleeLavaDirect(c);
@@ -578,7 +578,7 @@ namespace
             const int away_z = closest.z >= feet_now.z ? -1 : 1;
             const Position flee(feet_now.x + away_x * 8, feet_now.y, feet_now.z + away_z * 8);
             LOG_INFO("[LAVA] lava still touching after sealing, backing off from " << closest << " toward " << flee << ", bot at " << feet_now);
-            c.LogMessage("[MINE] lava ryadom, otstupayu");
+            c.LogMessage("[MINE] лава рядом, отступаю");
             GoTo(c, flee, 2);
             EquipBestPickaxe(c);
         }
@@ -683,7 +683,7 @@ namespace
         if (sealed > 0)
         {
             LOG_INFO("[LAVA] sealed " << sealed << " lava cell(s) near " << feet);
-            c.LogMessage("[LAVA] zakryto " + std::to_string(sealed));
+            c.LogMessage("[LAVA] закрыто " + std::to_string(sealed));
         }
         return sealed;
     }
@@ -787,7 +787,7 @@ namespace
             if (count >= 3)
             {
                 LOG_INFO("[MINE] block at " << pos << " refuses to break (" << count << " attempts), skipping it");
-                c.LogMessage("[MINE] blok ne lomaetsya (antichit?), propuskayu");
+                c.LogMessage("[MINE] блок не ломается (античит?), пропускаю");
             }
             c.GetBlackboard().Set<std::vector<std::pair<Position, int>>>(fails_key, fails);
         }
@@ -896,7 +896,7 @@ namespace
             {
                 c.GetBlackboard().Set<bool>("Mine.no_pickaxe_warned", true);
                 LOG_INFO("[MINE] no pickaxe in the inventory, digging will be very slow!");
-                c.LogMessage("[MINE] net kirki v inventare — kopayu chem est!");
+                c.LogMessage("[MINE] нет кирки в инвентаре — копаю чем есть!");
             }
         }
     }
@@ -990,15 +990,15 @@ namespace
         if (!HasAnyPickaxe(c))
         {
             LOG_INFO("[REPAIR] no pickaxe in inventory, pausing until one is given");
-            c.LogMessage("[MINE] net kirki! Day novuyu — ya zhdu i prodolzhu");
+            c.LogMessage("[MINE] нет кирки! Дай новую — я жду и продолжу");
             if (!WaitForPickaxe(c, 180))
             {
                 LOG_INFO("[REPAIR] no pickaxe given within 3 minutes, stopping the mining session");
-                c.LogMessage("[MINE] kirki tak i ne dali, ostanavlivayus");
+                c.LogMessage("[MINE] кирки так и не дали, останавливаюсь");
                 return false;
             }
             LOG_INFO("[REPAIR] pickaxe received, resuming");
-            c.LogMessage("[MINE] kirka poluchena, prodolzhayu!");
+            c.LogMessage("[MINE] кирка получена, продолжаю!");
             EquipBestPickaxe(c);
             return true;
         }
@@ -1009,7 +1009,7 @@ namespace
         }
 
         LOG_INFO("[MINE] pickaxe below 20% durability, mining quartz until repaired (mending)");
-        c.LogMessage("[MINE] kirka iznoshena, kopayu kvarc dlya remonta");
+        c.LogMessage("[MINE] кирка изношена, копаю кварц для ремонта");
         int safety = 0;
         int no_progress = 0;
         while (HeldToolDurabilityFraction(c) < 0.95 && safety++ < 200)
@@ -1020,7 +1020,7 @@ namespace
                 if (!WaitForPickaxe(c, 180))
                 {
                     LOG_INFO("[REPAIR] no pickaxe given within 3 minutes, stopping the mining session");
-                    c.LogMessage("[MINE] kirki tak i ne dali, ostanavlivayus");
+                    c.LogMessage("[MINE] кирки так и не дали, останавливаюсь");
                     return false;
                 }
                 EquipBestPickaxe(c);
@@ -1053,7 +1053,7 @@ namespace
         {
             // Digging on would destroy the pickaxe for good
             LOG_INFO("[REPAIR] pickaxe under 5% and not repairable, stopping the mining session");
-            c.LogMessage("[MINE] kirka na ishode i remont neventsya — ostanavlivayus, day kirku s Mending!");
+            c.LogMessage("[MINE] кирка на исходе и ремонт не идёт — останавливаюсь, дай кирку с Mending!");
             return false;
         }
         LOG_INFO("[MINE] pickaxe durability " << static_cast<int>(HeldToolDurabilityFraction(c) * 100) << "%, back to work");
@@ -1852,7 +1852,7 @@ namespace
         if (broken > 0)
         {
             LOG_INFO("[MINE] vein mined " << broken << " extra " << target_name << " blocks near " << start);
-            c.LogMessage("[MINE] zhila: +" + std::to_string(broken) + " " + target_name);
+            c.LogMessage("[MINE] жила: +" + std::to_string(broken) + " " + target_name);
             // Quartz is mined only for the mending XP (absorbed on the
             // spot); its items are worthless, so don't walk around picking
             // them up — that is the "thinking" pause between blocks.
@@ -2315,7 +2315,7 @@ namespace
                 if (HasFluidIn3x3(*world, target))
                 {
                     LOG_INFO("[MINE] skipping " << target_name << " at " << target << " (lava above/below/beside it)");
-                    c.LogMessage("[MINE] obломok u lavy — propuskayu");
+                    c.LogMessage("[MINE] обломок у лавы — пропускаю");
                     break; // falls into the "giving up" branch -> blacklisted
                 }
                 result = DigGuarded(c, target);
@@ -2345,7 +2345,7 @@ namespace
                 {
                     stuck = true;
                     LOG_INFO("[MINE] no progress for 8s on the way to " << target << " (best distance " << best_dist << "), postponing it");
-                    c.LogMessage("[MINE] zastryal, beru druguyu celu");
+                    c.LogMessage("[MINE] застрял, беру другую цель");
                     break;
                 }
             }
