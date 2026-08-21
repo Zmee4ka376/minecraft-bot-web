@@ -14,6 +14,13 @@ set(BOTCRAFT_USE_OPENGL_GUI OFF CACHE BOOL "" FORCE)
 set(BOTCRAFT_COMPRESSION ON CACHE BOOL "" FORCE)
 set(BOTCRAFT_ENCRYPTION ON CACHE BOOL "" FORCE)
 
+if(MSVC)
+    # Linker map files next to the binaries: let us resolve crash addresses
+    # (exception address - module base = RVA) to function names offline.
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /MAP")
+    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /MAP")
+endif()
+
 add_subdirectory(Botcraft)
 
 add_executable(WebBot
@@ -32,6 +39,7 @@ target_link_libraries(WebBot botcraft ws2_32)
 set_target_properties(WebBot PROPERTIES CXX_STANDARD 17)
 
 if(MSVC)
+    target_compile_options(WebBot PRIVATE "/utf-8")
     set_target_properties(WebBot PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded")
     set_target_properties(WebBot PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEBUG "${BOTCRAFT_OUTPUT_DIR}/bin")
     set_target_properties(WebBot PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "${BOTCRAFT_OUTPUT_DIR}/bin")

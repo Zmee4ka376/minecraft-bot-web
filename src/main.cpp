@@ -6,6 +6,16 @@
 #include <map>
 #include <atomic>
 
+#ifdef _WIN32
+// Console UTF-8 support without pulling in <windows.h>: it #defines THIS
+// (COM helper macro) which breaks ProtocolCraft's "using THIS = TDerived"
+extern "C" __declspec(dllimport) int __stdcall SetConsoleOutputCP(unsigned int wCodePageID);
+extern "C" __declspec(dllimport) int __stdcall SetConsoleCP(unsigned int wCodePageID);
+#ifndef CP_UTF8
+#define CP_UTF8 65001
+#endif
+#endif
+
 #include "botcraft/Utilities/Logger.hpp"
 #include "botcraft/Game/Entities/EntityManager.hpp"
 #include "botcraft/Game/Entities/LocalPlayer.hpp"
@@ -15,6 +25,52 @@
 #include "WebBotClient.hpp"
 
 #include <asio.hpp>
+
+#ifdef _WIN32
+// Crash dump support. windows.h is included AFTER all project headers on
+// purpose: it #defines THIS (COM helper macro) which breaks ProtocolCraft's
+// "using THIS = TDerived" if it comes first.
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <dbghelp.h>
+
+static LONG WINAPI WriteCrashDump(EXCEPTION_POINTERS* ep)
+{
+    CreateDirectoryA("dumps", nullptr);
+    char name[128];
+    __time64_t t = 0;
+    time(&t);
+    tm lt{};
+    localtime_s(&lt, &t);
+    snprintf(name, sizeof(name), "dumps/crash_%04d%02d%02d_%02d%02d%02d.dmp",
+        lt.tm_year + 1900, lt.tm_mon + 1, lt.tm_mday, lt.tm_hour, lt.tm_min, lt.tm_sec);
+    HANDLE file = CreateFileA(name, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file != INVALID_HANDLE_VALUE)
+    {
+        HMODULE dbg = LoadLibraryA("dbghelp.dll");
+        if (dbg != nullptr)
+        {
+            using MiniDumpWriteDump_t = BOOL(WINAPI*)(HANDLE, DWORD, HANDLE, DWORD,
+                PMINIDUMP_EXCEPTION_INFORMATION, PMINIDUMP_USER_STREAM_INFORMATION, PMINIDUMP_CALLBACK_INFORMATION);
+            const MiniDumpWriteDump_t write_dump =
+                reinterpret_cast<MiniDumpWriteDump_t>(GetProcAddress(dbg, "MiniDumpWriteDump"));
+            if (write_dump != nullptr)
+            {
+                MINIDUMP_EXCEPTION_INFORMATION mei;
+                mei.ThreadId = GetCurrentThreadId();
+                mei.ExceptionPointers = ep;
+                mei.ClientPointers = FALSE;
+                write_dump(GetCurrentProcess(), GetCurrentProcessId(), file,
+                    MiniDumpNormal | MiniDumpWithIndirectlyReferencedMemory | MiniDumpWithProcessThreadData,
+                    &mei, nullptr, nullptr);
+            }
+        }
+        CloseHandle(file);
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
 
 static WebBotClient* g_client = nullptr;
 static std::atomic<bool> g_running(true);
@@ -495,6 +551,11 @@ void ShowHelp(const char* argv0)
 
 int main(int argc, char* argv[])
 {
+#ifdef _WIN32
+    SetUnhandledExceptionFilter(WriteCrashDump);
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
     try
     {
         Botcraft::Logger::GetInstance().SetLogLevel(Botcraft::LogLevel::Info);
